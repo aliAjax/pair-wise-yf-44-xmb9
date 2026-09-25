@@ -5,30 +5,431 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>化工装置变更与工艺安全管理</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; }
-    main { max-width: 820px; margin: auto; }
-    pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    button { padding: .5rem .8rem; cursor: pointer; }
+    :root { --red:#b91c1c; --amber:#b45309; --green:#15803d; --gray:#6b7280; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #1f2937; background: #f9fafb; }
+    header { background: #111827; color: #f9fafb; padding: .75rem 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    header h1 { font-size: 1.1rem; margin: 0; }
+    header label { font-size: .85rem; display: flex; gap: .3rem; align-items: center; }
+    main { max-width: 1080px; margin: 1rem auto; padding: 0 1rem; display: grid; gap: 1rem; }
+    section { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; }
+    h2 { font-size: 1rem; margin: 0 0 .6rem; }
+    h3 { font-size: .9rem; margin: .8rem 0 .4rem; }
+    button { padding: .4rem .8rem; cursor: pointer; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }
+    button.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+    button.danger { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+    input, select, textarea { padding: .35rem .5rem; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; }
+    textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .85rem; }
+    .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .3rem 0; }
+    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .78rem; background: #e5e7eb; }
+    .badge.ok { background: #dcfce7; color: var(--green); }
+    .badge.warn { background: #fef3c7; color: var(--amber); }
+    .badge.bad { background: #fee2e2; color: var(--red); }
+    .blockers { list-style: none; padding: 0; margin: .4rem 0; }
+    .blockers li { padding: .4rem .6rem; border-left: 4px solid var(--amber); background: #fffbeb; margin: .25rem 0; }
+    .blockers li.stop { border-color: var(--red); background: #fef2f2; }
+    .muted { color: var(--gray); font-size: .85rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #e5e7eb; }
+    pre { background: #f3f4f6; padding: .8rem; border-radius: 8px; overflow-x: auto; font-size: .8rem; white-space: pre-wrap; }
+    #mustStop { background: #fef2f2; color: var(--red); border: 1px solid var(--red); padding: .6rem .8rem; border-radius: 8px; font-weight: 600; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
+<header>
+  <h1>变更隔离与恢复管理</h1>
+  <label>用户 <input id="userId" size="8"></label>
+  <label>角色
+    <select id="role">
+      <option value="engineer">工程师</option>
+      <option value="operator">操作员</option>
+      <option value="safety">安全员</option>
+      <option value="verifier">验证员</option>
+      <option value="admin">管理员</option>
+      <option value="viewer">只读</option>
+    </select>
+  </label>
+  <span id="health" class="muted"></span>
+</header>
 <main>
-  <h1>化工装置变更与工艺安全管理</h1>
-  <p>这是最小演示页面。使用浏览器或 curl 调用 JSON API。</p>
-  <p><button onclick="checkHealth()">检查服务状态</button></p>
-  <pre id="result">等待操作</pre>
-  <h2>常用接口</h2>
-  <pre>GET  /health
-GET  /api/&lt;kind&gt;
-POST /api/&lt;kind&gt;
-GET  /api/entities/&lt;id&gt;
-POST /api/entities/&lt;id&gt;/actions</pre>
+  <section>
+    <h2>装置与变更</h2>
+    <div class="grid2">
+      <div>
+        <h3>新建装置</h3>
+        <div class="row">
+          <input id="unitName" placeholder="名称">
+          <input id="unitLoc" placeholder="位置">
+          <button onclick="createUnit()">创建</button>
+        </div>
+      </div>
+      <div>
+        <h3>新建变更</h3>
+        <div class="row">
+          <select id="unitSelect"></select>
+          <input id="changeDesc" placeholder="变更描述">
+          <button onclick="createChange()">创建</button>
+        </div>
+      </div>
+    </div>
+    <h3>选择变更</h3>
+    <div class="row">
+      <select id="changeSelect" onchange="onSelectChange()"></select>
+      <button onclick="run(async () => undefined)">刷新</button>
+    </div>
+  </section>
+
+  <section id="changeView" hidden>
+    <div class="row">
+      <h2 style="margin:0">变更 <span id="chgId"></span></h2>
+      <span id="chgStatus" class="badge"></span>
+    </div>
+    <div id="mustStop" hidden>⚠ 存在阻塞项：气体检测失效或行动项未完成，应立即停止施工</div>
+    <div id="blockerBox"></div>
+
+    <h3>隔离方案（受影响管线与阀门登记）</h3>
+    <div id="isolationBox"></div>
+
+    <h3>气体检测</h3>
+    <div class="row">
+      <select id="gasResult">
+        <option value="pass">合格</option>
+        <option value="fail">不合格</option>
+      </select>
+      <label>有效期(分钟) <input id="gasValid" type="number" value="30" style="width:5rem"></label>
+      <label>检测人 <input id="gasTester" size="8"></label>
+      <button onclick="createGasTest()">提交检测</button>
+    </div>
+    <div id="gasBox"></div>
+
+    <h3>施工与恢复</h3>
+    <div class="row" id="workBox"></div>
+
+    <h3>行动项</h3>
+    <div class="row">
+      <input id="itemDesc" placeholder="行动项描述">
+      <input id="itemOwner" placeholder="负责人" size="8">
+      <button onclick="createActionItem()">登记</button>
+    </div>
+    <div id="itemBox"></div>
+
+    <h3>其他流程操作</h3>
+    <div class="row">
+      <select id="genericAction" onchange="fillTemplate()"></select>
+      <button onclick="runGeneric()">执行</button>
+    </div>
+    <textarea id="genericData" rows="3"></textarea>
+
+    <h3>审计时间线</h3>
+    <div id="auditBox"></div>
+  </section>
+
+  <section>
+    <h2>结果</h2>
+    <pre id="result">等待操作</pre>
+  </section>
 </main>
 <script>
-async function checkHealth() {
-  const response = await fetch('/health');
-  document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+const STATUS_LABELS = {
+  draft: '草稿', assessed: '已评估', approved: '已审批', in_progress: '施工中',
+  suspended: '已停工', implemented: '已完工', restored: '已恢复', commissioned: '已投产',
+  rolled_back: '已回退', closed: '已关闭', pending_isolation: '待隔离', isolated: '已隔离',
+  recorded: '已记录', void: '已作废', open: '未关闭', completed: '已完成', verified: '已验证',
+  operating: '运行中', shutdown: '已停机', frozen: '已冻结',
+};
+const GENERIC = {
+  assess: { risk_level: 'medium', analyst: 'E-1' },
+  approve: { approvals: ['S-1', 'S-2'], permit_id: 'MOC-1' },
+  commission: { tests_passed: true },
+  rollback: { reason: '' },
+  close: { outcome: '' },
+};
+const $ = id => document.getElementById(id);
+const state = {
+  user: localStorage.getItem('moc.user') || 'u-1',
+  role: localStorage.getItem('moc.role') || 'engineer',
+  changeId: null,
+  entity: null,
+  blk: null,
+};
+
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+function label(status) { return STATUS_LABELS[status] || status || '—'; }
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'X-User-Id': state.user, 'X-Role': state.role },
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const err = new Error(payload.error || ('HTTP ' + resp.status));
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
+}
+function show(value) {
+  $('result').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+async function run(fn) {
+  try {
+    const out = await fn();
+    if (out !== undefined) show(out);
+    await refreshAll();
+  } catch (err) {
+    show('错误：' + err.message);
+  }
+}
+
+async function refreshAll() {
+  const units = await api('/api/units');
+  $('unitSelect').innerHTML = units.items.map(u => `<option value="${u.id}">${esc(u.data.name)}</option>`).join('');
+  const changes = await api('/api/changes');
+  $('changeSelect').innerHTML = '<option value="">— 选择变更 —</option>' + changes.items.map(c =>
+    `<option value="${c.id}" ${c.id === state.changeId ? 'selected' : ''}>${esc(c.data.description || c.id)} [${label(c.status)}]</option>`
+  ).join('');
+  if (state.changeId) await loadChange();
+}
+
+async function loadChange() {
+  const [entity, blk, audit, gas] = await Promise.all([
+    api('/api/entities/' + state.changeId),
+    api('/api/entities/' + state.changeId + '/blockers'),
+    api('/api/audit?entity_id=' + state.changeId),
+    api('/api/gas_tests'),
+  ]);
+  state.entity = entity;
+  state.blk = blk;
+  $('changeView').hidden = false;
+  $('chgId').textContent = entity.id.slice(0, 8);
+  $('chgStatus').textContent = label(entity.status);
+  renderBlockers(blk);
+  renderIsolation(entity, blk);
+  renderGas(gas.items.filter(t => t.data.change_id === entity.id));
+  renderWork(entity);
+  renderItems(blk.action_items || []);
+  renderAudit(audit.items || []);
+}
+
+function renderBlockers(blk) {
+  $('mustStop').hidden = !blk.must_stop;
+  if (!blk.blockers.length) {
+    $('blockerBox').innerHTML = '<p class="muted">当前无阻塞项</p>';
+    return;
+  }
+  $('blockerBox').innerHTML = '<ul class="blockers">' + blk.blockers.map(b =>
+    `<li class="${blk.must_stop ? 'stop' : ''}">${esc(b.message)}</li>`
+  ).join('') + '</ul>';
+}
+
+function renderIsolation(entity, blk) {
+  const iso = blk.isolation;
+  if (!iso) {
+    $('isolationBox').innerHTML = `
+      <p class="muted">尚未登记隔离方案。每行一条：管线为 <code>位号, 说明</code>；阀门为 <code>位号, 正常位置, 隔离位置</code>。</p>
+      <h3>受影响管线</h3>
+      <textarea id="linesInput" rows="2" placeholder="P-1001, 进料管线"></textarea>
+      <h3>隔离阀门</h3>
+      <textarea id="valvesInput" rows="3" placeholder="XV-1001, 开, 关&#10;XV-1002, 开, 关+盲板"></textarea>
+      <div class="row"><button class="primary" onclick="createIsolation()">登记隔离方案</button></div>`;
+    return;
+  }
+  const confirms = `操作员确认：${iso.operator_confirmed_by ? '✔ ' + esc(iso.operator_confirmed_by) : '✘ 未确认'}
+    安全员确认：${iso.safety_confirmed_by ? '✔ ' + esc(iso.safety_confirmed_by) : '✘ 未确认'}`;
+  const buttons = [];
+  if (iso.status === 'pending_isolation') {
+    buttons.push(`<button onclick="confirmIsolation('confirm_operator')">操作员确认</button>`);
+    buttons.push(`<button onclick="confirmIsolation('confirm_safety')">安全员确认</button>`);
+  }
+  if (iso.status === 'pending_isolation' || iso.status === 'isolated') {
+    buttons.push(`<button class="danger" onclick="withdrawIsolation()">撤回确认</button>`);
+  }
+  const canRestore = entity.status === 'implemented' && iso.status === 'isolated';
+  const lines = iso.lines.map(l => `<span class="badge">${esc(l.tag)} ${esc(l.description || '')}</span>`).join(' ');
+  const valves = '<table><tr><th>阀门</th><th>正常位置</th><th>隔离位置</th><th>恢复核对</th></tr>' + iso.valves.map(v => {
+    let cell;
+    if (v.restored) cell = `<span class="badge ok">已核对 ${esc(v.restored_by || '')}</span>`;
+    else if (canRestore) cell = `<input id="vr-${esc(v.tag)}" value="${esc(v.normal_position)}" size="6"> <button onclick="restoreValve('${esc(v.tag)}')">核对</button>`;
+    else cell = '<span class="badge warn">待核对</span>';
+    return `<tr><td>${esc(v.tag)}</td><td>${esc(v.normal_position)}</td><td>${esc(v.isolated_position)}</td><td>${cell}</td></tr>`;
+  }).join('') + '</table>';
+  $('isolationBox').innerHTML = `
+    <div class="row">状态 <span class="badge ${iso.status === 'pending_isolation' ? 'warn' : 'ok'}">${label(iso.status)}</span> ${confirms}</div>
+    <div class="row">${buttons.join('')}</div>
+    <div class="row">${lines}</div>
+    ${valves}
+    <p class="muted">任一方撤回将清除双方确认并回到待隔离；恢复供料前须逐阀核对回正常位置。</p>`;
+}
+
+function renderGas(tests) {
+  if (!tests.length) {
+    $('gasBox').innerHTML = '<p class="muted">暂无检测记录</p>';
+    return;
+  }
+  const rows = tests.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 5).map(t => {
+    const tested = new Date(t.data.tested_at || t.created_at);
+    const expires = new Date(tested.getTime() + (Number(t.data.valid_minutes) || 30) * 60000);
+    let badge;
+    if (t.status === 'void') badge = '<span class="badge bad">已作废</span>';
+    else if (t.data.result !== 'pass') badge = '<span class="badge bad">不合格</span>';
+    else if (new Date() > expires) badge = '<span class="badge warn">已过期</span>';
+    else badge = '<span class="badge ok">有效</span>';
+    return `<tr><td>${badge}</td><td>${esc(t.data.tester || '')}</td><td>${tested.toLocaleString()}</td><td>${expires.toLocaleTimeString()}</td></tr>`;
+  }).join('');
+  $('gasBox').innerHTML = `<table><tr><th>状态</th><th>检测人</th><th>检测时间</th><th>有效期至</th></tr>${rows}</table>`;
+}
+
+function renderWork(entity) {
+  const rows = [];
+  const s = entity.status;
+  if (s === 'approved') {
+    rows.push('<label>规程版本 <input id="procVer" size="6" value="v2"></label>');
+    rows.push(`<button class="primary" onclick="workAction('start_work', { procedure_version: $('procVer').value })">开工</button>`);
+  }
+  if (s === 'in_progress') {
+    rows.push(`<button class="danger" onclick="suspendWork()">停工</button>`);
+    rows.push(`<button class="primary" onclick="workAction('finish_work')">完工</button>`);
+  }
+  if (s === 'suspended') rows.push(`<button class="primary" onclick="workAction('resume')">复工</button>`);
+  if (s === 'implemented') rows.push(`<button class="primary" onclick="workAction('restore')">恢复供料</button>`);
+  if (s === 'restored') rows.push('<span class="muted">已恢复供料，可在下方执行投产（commission）</span>');
+  $('workBox').innerHTML = rows.join(' ') || '<span class="muted">当前状态无可用施工操作</span>';
+}
+
+function renderItems(items) {
+  if (!items.length) {
+    $('itemBox').innerHTML = '<p class="muted">暂无行动项</p>';
+    return;
+  }
+  $('itemBox').innerHTML = '<table><tr><th>描述</th><th>负责人</th><th>状态</th><th></th></tr>' + items.map(i => {
+    const btns = [];
+    if (i.status === 'open') btns.push(`<button onclick="completeItem('${i.id}')">完成</button>`);
+    if (i.status === 'completed') btns.push(`<button onclick="verifyItem('${i.id}')">验证</button>`);
+    return `<tr><td>${esc(i.description || '')}</td><td>${esc(i.owner || '')}</td>` +
+      `<td><span class="badge ${i.status === 'verified' ? 'ok' : i.status === 'completed' ? 'warn' : 'bad'}">${label(i.status)}</span></td>` +
+      `<td>${btns.join('')}</td></tr>`;
+  }).join('') + '</table>';
+}
+
+function renderAudit(items) {
+  const rows = items.slice(-15).reverse().map(a =>
+    `<tr><td>${esc(a.created_at)}</td><td>${esc(a.actor_id)}(${esc(a.actor_role)})</td>` +
+    `<td>${esc(a.action)}</td><td>${label(a.from_status)} → ${label(a.to_status)}</td></tr>`
+  ).join('');
+  $('auditBox').innerHTML = rows
+    ? `<table><tr><th>时间</th><th>操作人</th><th>动作</th><th>状态</th></tr>${rows}</table>`
+    : '<p class="muted">暂无记录</p>';
+}
+
+function parseLines(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const parts = l.split(/[,，]/);
+    return { tag: (parts.shift() || '').trim(), description: parts.join(',').trim() };
+  });
+}
+function parseValves(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const parts = l.split(/[,，]/).map(s => s.trim());
+    return { tag: parts[0] || '', normal_position: parts[1] || '', isolated_position: parts[2] || '' };
+  });
+}
+
+function createUnit() {
+  run(async () => api('/api/units', { method: 'POST', body: JSON.stringify({ name: $('unitName').value, location: $('unitLoc').value }) }));
+}
+function createChange() {
+  run(async () => {
+    const created = await api('/api/changes', { method: 'POST', body: JSON.stringify({ unit_id: $('unitSelect').value, description: $('changeDesc').value }) });
+    state.changeId = created.id;
+    return created;
+  });
+}
+function onSelectChange() {
+  state.changeId = $('changeSelect').value || null;
+  if (!state.changeId) { $('changeView').hidden = true; return; }
+  run(async () => undefined);
+}
+function createIsolation() {
+  run(async () => api('/api/isolations', { method: 'POST', body: JSON.stringify({
+    change_id: state.changeId,
+    lines: parseLines($('linesInput').value),
+    valves: parseValves($('valvesInput').value),
+  }) }));
+}
+function confirmIsolation(action) {
+  run(async () => api(`/api/entities/${state.blk.isolation.id}/actions`, { method: 'POST', body: JSON.stringify({ action, data: {} }) }));
+}
+function withdrawIsolation() {
+  const reason = prompt('撤回原因（任一方撤回将清除双方确认并回到待隔离）');
+  if (!reason) return;
+  run(async () => api(`/api/entities/${state.blk.isolation.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'withdraw', data: { reason } }) }));
+}
+function restoreValve(tag) {
+  const position = $('vr-' + tag).value;
+  run(async () => api(`/api/entities/${state.blk.isolation.id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'restore_valve', data: { tag, position } }) }));
+}
+function createGasTest() {
+  run(async () => api('/api/gas_tests', { method: 'POST', body: JSON.stringify({
+    change_id: state.changeId,
+    result: $('gasResult').value,
+    valid_minutes: Number($('gasValid').value || 30),
+    tester: $('gasTester').value || state.user,
+  }) }));
+}
+function workAction(action, data) {
+  run(async () => api(`/api/entities/${state.changeId}/actions`, { method: 'POST', body: JSON.stringify({ action, data: data || {} }) }));
+}
+function suspendWork() {
+  const reason = prompt('停工原因');
+  if (!reason) return;
+  workAction('suspend', { reason });
+}
+function createActionItem() {
+  run(async () => api('/api/action_items', { method: 'POST', body: JSON.stringify({
+    change_id: state.changeId,
+    description: $('itemDesc').value,
+    owner: $('itemOwner').value || state.user,
+  }) }));
+}
+function completeItem(id) {
+  const evidence = prompt('完成证据');
+  if (evidence === null) return;
+  run(async () => api(`/api/entities/${id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'complete', data: { completed_by: state.user, evidence } }) }));
+}
+function verifyItem(id) {
+  run(async () => api(`/api/entities/${id}/actions`, { method: 'POST', body: JSON.stringify({ action: 'verify', data: { verifier: state.user } }) }));
+}
+function fillTemplate() {
+  $('genericData').value = JSON.stringify(GENERIC[$('genericAction').value] || {}, null, 2);
+}
+function runGeneric() {
+  let data;
+  try { data = JSON.parse($('genericData').value || '{}'); }
+  catch (err) { show('JSON 格式错误'); return; }
+  workAction($('genericAction').value, data);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  $('userId').value = state.user;
+  $('role').value = state.role;
+  $('gasTester').value = state.user;
+  $('userId').addEventListener('change', e => { state.user = e.target.value; localStorage.setItem('moc.user', state.user); });
+  $('role').addEventListener('change', e => { state.role = e.target.value; localStorage.setItem('moc.role', state.role); });
+  $('genericAction').innerHTML = Object.keys(GENERIC).map(a => `<option value="${a}">${a}</option>`).join('');
+  fillTemplate();
+  try {
+    const health = await api('/health');
+    $('health').textContent = '服务：' + health.status;
+  } catch (err) {
+    $('health').textContent = '服务异常';
+  }
+  try { await refreshAll(); } catch (err) { show('错误：' + err.message); }
+});
 </script>
 </body>
 </html>

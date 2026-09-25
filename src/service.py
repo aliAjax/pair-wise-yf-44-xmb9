@@ -1,8 +1,8 @@
 from uuid import uuid4
 
 from .audit import AuditTrail
-from .domain import ConflictError, NotFoundError
-from .rules import RuleEngine
+from .domain import ConflictError, NotFoundError, ValidationError
+from .rules import RuleEngine, compute_change_blockers
 
 
 class DomainService:
@@ -68,6 +68,12 @@ class DomainService:
         if kind:
             kind = self.rules.normalize_kind(kind)
         return self.repository.list_entities(kind=kind, status=status)
+
+    def blockers(self, entity_id):
+        entity = self.get(entity_id)
+        if self.rules.normalize_kind(entity["kind"]) != "change":
+            raise ValidationError("blockers are only available for changes")
+        return compute_change_blockers(entity, self._lookup)
 
     def audit_log(self, entity_id=None):
         return self.repository.list_audit(entity_id=entity_id)
