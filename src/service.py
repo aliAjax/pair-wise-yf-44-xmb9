@@ -64,6 +64,11 @@ class DomainService:
             raise NotFoundError("entity not found: " + entity_id)
         return entity
 
+    def blockers(self, entity_id):
+        """读取实体当前阻塞项（隔离单/变更在施工链条上的具体卡点）。"""
+        entity = self.get(entity_id)
+        return self.rules.blockers(entity, self._lookup)
+
     def list(self, kind=None, status=None):
         if kind:
             kind = self.rules.normalize_kind(kind)

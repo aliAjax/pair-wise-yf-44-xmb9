@@ -3,32 +3,496 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>化工装置变更与工艺安全管理</title>
+  <title>设备变更隔离与恢复施工管理</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; }
-    main { max-width: 820px; margin: auto; }
-    pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    button { padding: .5rem .8rem; cursor: pointer; }
+    :root {
+      --bg: #f1f5f9; --card: #ffffff; --line: #e2e8f0; --text: #1e293b;
+      --muted: #64748b; --blue: #1d4ed8; --red: #b91c1c; --red-bg: #fef2f2;
+      --green: #15803d; --green-bg: #f0fdf4; --amber: #b45309; --amber-bg: #fffbeb;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+           margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+    header { background: #0f172a; color: #fff; padding: .8rem 1.2rem; display: flex;
+             align-items: center; gap: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .who { display: flex; gap: .5rem; align-items: center; margin-left: auto; }
+    .who select, .who input { padding: .35rem .5rem; border-radius: 6px; border: 1px solid #334155;
+             background: #1e293b; color: #fff; }
+    main { max-width: 1100px; margin: 1rem auto; padding: 0 1rem; display: grid;
+           grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    .card h2 { font-size: 14px; margin: 0 0 .7rem; display: flex; align-items: center; gap: .5rem; }
+    .full { grid-column: 1 / -1; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: .5rem 0 .2rem; }
+    input, textarea, select { width: 100%; padding: .45rem .55rem; border: 1px solid var(--line);
+            border-radius: 6px; font: inherit; }
+    textarea { resize: vertical; min-height: 38px; }
+    .row { display: flex; gap: .5rem; }
+    .row > * { flex: 1; }
+    button { padding: .45rem .8rem; border-radius: 6px; border: 1px solid var(--blue);
+             background: var(--blue); color: #fff; cursor: pointer; font: inherit; white-space: nowrap; }
+    button.secondary { background: #fff; color: var(--blue); }
+    button.danger { border-color: var(--red); background: var(--red); }
+    button.warn { border-color: var(--amber); background: var(--amber); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .btns { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .7rem; }
+    .tag { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: 12px;
+           font-weight: 600; }
+    .tag.pending { background: var(--amber-bg); color: var(--amber); }
+    .tag.isolated { background: #eff6ff; color: var(--blue); }
+    .tag.work_in_progress { background: #faf5ff; color: #7e22ce; }
+    .tag.restored { background: var(--green-bg); color: var(--green); }
+    .tag.change { background: #f1f5f9; color: var(--muted); }
+    .meta { color: var(--muted); font-size: 12px; margin: .15rem 0; word-break: break-all; }
+    .blockers { border-radius: 8px; padding: .7rem .9rem; margin-bottom: 1rem; }
+    .blockers.has { background: var(--red-bg); border: 1px solid #fecaca; }
+    .blockers.none { background: var(--green-bg); border: 1px solid #bbf7d0; color: var(--green); }
+    .blockers ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+    .blockers li { margin: .25rem 0; color: var(--red); }
+    .blockers code { background: rgba(185,28,28,.08); padding: 0 .3rem; border-radius: 4px;
+                     font-size: 11px; }
+    .empty { color: var(--muted); font-style: italic; }
+    .item { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; margin-bottom: .6rem; }
+    .item .head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .status-open { color: var(--red); } .status-completed { color: var(--amber); }
+    .status-verified { color: var(--green); }
+    #toast { position: fixed; right: 1rem; bottom: 1rem; max-width: 420px; z-index: 10; }
+    .toast { padding: .7rem 1rem; border-radius: 8px; margin-top: .5rem; color: #fff;
+             box-shadow: 0 4px 14px rgba(0,0,0,.18); white-space: pre-wrap; }
+    .toast.ok { background: var(--green); } .toast.err { background: var(--red); }
+    .steps { display: flex; gap: 0; margin: .5rem 0; font-size: 12px; flex-wrap: wrap; }
+    .steps span { padding: .25rem .6rem; background: #f1f5f9; color: var(--muted); }
+    .steps span.on { background: var(--blue); color: #fff; font-weight: 600; }
+    .steps span.done { background: var(--green-bg); color: var(--green); }
+    .hint { font-size: 12px; color: var(--muted); margin-top: .4rem; }
+    .confirm { display: inline-flex; align-items: center; gap: .3rem; font-size: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; display: inline-block; }
+    .dot.yes { background: var(--green); }
   </style>
 </head>
 <body>
+<header>
+  <h1>设备变更施工：隔离 / 检测 / 开工 / 恢复</h1>
+  <div class="who">
+    <span style="font-size:12px;color:#94a3b8">当前身份</span>
+    <input id="userId" value="demo-user" style="width:110px" placeholder="工号">
+    <select id="role">
+      <option value="admin">管理员 admin</option>
+      <option value="operator">操作员 operator</option>
+      <option value="safety">安全员 safety</option>
+      <option value="engineer">工程师 engineer</option>
+      <option value="verifier">核验员 verifier</option>
+    </select>
+  </div>
+</header>
+
 <main>
-  <h1>化工装置变更与工艺安全管理</h1>
-  <p>这是最小演示页面。使用浏览器或 curl 调用 JSON API。</p>
-  <p><button onclick="checkHealth()">检查服务状态</button></p>
-  <pre id="result">等待操作</pre>
-  <h2>常用接口</h2>
-  <pre>GET  /health
-GET  /api/&lt;kind&gt;
-POST /api/&lt;kind&gt;
-GET  /api/entities/&lt;id&gt;
-POST /api/entities/&lt;id&gt;/actions</pre>
+  <section>
+    <div class="card">
+      <h2>① 变更与行动项</h2>
+      <div class="btns">
+        <button class="secondary" onclick="bootstrapDemo()">一键生成演示数据（装置+变更+审批+行动项+隔离登记）</button>
+        <button class="secondary" onclick="refreshAll()">刷新</button>
+      </div>
+      <div id="changeList"></div>
+    </div>
+
+    <div class="card">
+      <h2>② 行动项（开工/恢复前必须全部 verified）</h2>
+      <div id="itemList"><div class="empty">尚无关联行动项</div></div>
+      <div class="row">
+        <input id="newItemDesc" placeholder="行动项描述，如：加装盲板">
+        <input id="newItemOwner" placeholder="责任人" style="max-width:120px">
+        <button onclick="createItem()">登记行动项</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>③ 隔离单（登记受影响管线与阀门）</h2>
+      <div id="isoList"><div class="empty">尚无隔离单。生成演示数据，或在已批准变更上登记。</div></div>
+      <div id="isoForm">
+        <div class="row">
+          <select id="isoChange"></select>
+        </div>
+        <label>受影响管线（每行一条）</label>
+        <textarea id="isoLines">进料管线 A</textarea>
+        <label>阀门（每行一个编号，邻线阀门必须列入）</label>
+        <textarea id="isoValves">HV-101
+HV-102（邻线）</textarea>
+        <div class="btns"><button onclick="createIsolation()">登记隔离单（待隔离）</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="full">
+    <div class="card">
+      <h2>④ 当前隔离单操作面板</h2>
+      <div id="detail"></div>
+    </div>
+  </section>
 </main>
+<div id="toast"></div>
+
 <script>
-async function checkHealth() {
-  const response = await fetch('/health');
-  document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+const STATUS_NAME = {
+  pending: '待隔离', isolated: '已隔离',
+  work_in_progress: '施工中', restored: '已恢复供料',
+};
+let state = { change: null, isolation: null, items: [] };
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'X-User-Id': document.getElementById('userId').value || 'anonymous',
+    'X-Role': document.getElementById('role').value,
+  };
 }
+function toast(msg, ok) {
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+  return body;
+}
+async function post(path, payload) {
+  return api(path, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+}
+async function act(entityId, action, data, expectedVersion) {
+  return post(`/api/entities/${entityId}/actions`,
+    { action, data: data || {}, expected_version: expectedVersion ?? null });
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function expiryInput(hours) {
+  const d = new Date(Date.now() + hours * 3600e3);
+  // 转为带时区偏移的 ISO（去掉毫秒）
+  const pad = n => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const tz = sign + pad(Math.abs(off) / 60) + ':' + pad(Math.abs(off) % 60);
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + tz;
+}
+function blockersHtml(blockers) {
+  if (!blockers || !blockers.length) {
+    return '<div class="blockers none">✓ 当前无阻塞项</div>';
+  }
+  return '<div class="blockers has"><strong>⛔ 具体阻塞项（' + blockers.length + '）</strong><ul>'
+    + blockers.map(b => `<li><code>${esc(b.code)}</code> ${esc(b.message)}</li>`).join('')
+    + '</ul></div>';
+}
+
+async function refreshAll() {
+  const [changes, isolations, items] = await Promise.all([
+    api('/api/changes'), api('/api/isolations'), api('/api/action_items'),
+  ]);
+  renderChanges(changes.items || []);
+  renderItems(items.items || []);
+  renderIsoSelect(changes.items || []);
+  renderIsolationList(isolations.items || []);
+  await renderDetail();
+}
+
+function renderChanges(list) {
+  const box = document.getElementById('changeList');
+  if (!list.length) { box.innerHTML = '<div class="empty">尚无变更</div>'; state.change = null; return; }
+  if (!state.change || !list.find(c => c.id === state.change.id)) {
+    state.change = list.find(c => c.status === 'approved') || list[0];
+  } else {
+    state.change = list.find(c => c.id === state.change.id) || list[0];
+  }
+  box.innerHTML = list.map(c => {
+    const active = state.change && c.id === state.change.id;
+    return `<div class="item" style="${active ? 'border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)' : ''}">
+      <div class="head">
+        <strong>${esc(c.data.description)}</strong>
+        <span class="tag change">${esc(c.status)}</span>
+      </div>
+      <div class="meta">${esc(c.id)} · 装置 ${esc(c.data.unit_id)}</div>
+      <div class="btns">
+        <button class="secondary" onclick="selectChange('${c.id}')">选择</button>
+        ${c.status === 'approved'
+          ? `<button onclick="implementChange('${c.id}', ${c.version})">实施 implement</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+async function selectChange(id) {
+  state.change = (await api('/api/changes')).items.find(c => c.id === id);
+  await refreshAll();
+}
+async function implementChange(id, version) {
+  try {
+    const proc = prompt('作业方案版本 procedure_version', 'v1');
+    if (proc === null) return;
+    await act(id, 'implement', { procedure_version: proc }, version);
+    toast('变更已实施', true);
+  } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+
+function renderItems(items) {
+  state.items = items.filter(i => state.change && i.data.change_id === state.change.id);
+  const box = document.getElementById('itemList');
+  if (!state.items.length) { box.innerHTML = '<div class="empty">该变更暂无行动项</div>'; return; }
+  box.innerHTML = state.items.map(i => `<div class="item">
+    <div class="head">
+      <span>${esc(i.data.description)} <span class="meta">@${esc(i.data.owner)}</span></span>
+      <span class="status-${i.status}">${i.status}</span>
+    </div>
+    <div class="meta">${esc(i.id)}</div>
+    <div class="btns">
+      ${i.status === 'open' ? `<button class="secondary" onclick="completeItem('${i.id}',${i.version})">完成 complete</button>` : ''}
+      ${i.status === 'completed' ? `<button class="secondary" onclick="verifyItem('${i.id}',${i.version})">核验 verify</button>` : ''}
+      ${i.status === 'verified' ? `<button class="warn" onclick="reopenItem('${i.id}',${i.version})">重新打开 reopen</button>` : ''}
+    </div>
+  </div>`).join('');
+}
+async function createItem() {
+  if (!state.change) return toast('请先选择变更', false);
+  const description = document.getElementById('newItemDesc').value.trim();
+  const owner = document.getElementById('newItemOwner').value.trim();
+  if (!description || !owner) return toast('描述与责任人必填', false);
+  try {
+    await post('/api/action_items', { change_id: state.change.id, description, owner });
+    document.getElementById('newItemDesc').value = '';
+    document.getElementById('newItemOwner').value = '';
+    toast('行动项已登记', true);
+  } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+async function completeItem(id, v) {
+  try { await act(id, 'complete', { completed_by: document.getElementById('userId').value, evidence: '现场照片' }, v);
+    toast('行动项已完成', true); } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+async function verifyItem(id, v) {
+  try { await act(id, 'verify', { verifier: document.getElementById('userId').value }, v);
+    toast('行动项已核验', true); } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+async function reopenItem(id, v) {
+  try { await act(id, 'reopen', { reason: '现场复核不通过' }, v);
+    toast('行动项已重新打开；施工必须停止', false); } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+
+function renderIsoSelect(changes) {
+  const sel = document.getElementById('isoChange');
+  sel.innerHTML = changes
+    .filter(c => c.status === 'approved')
+    .map(c => `<option value="${c.id}" ${state.change && c.id === state.change.id ? 'selected' : ''}>
+      ${esc(c.data.description)} (${c.id.slice(0, 8)})</option>`).join('');
+}
+function renderIsolationList(list) {
+  const box = document.getElementById('isoList');
+  const mine = list.filter(i => state.change && i.data.change_id === state.change.id);
+  if (state.isolation && !list.find(i => i.id === state.isolation.id)) state.isolation = null;
+  if (!state.isolation && mine.length) state.isolation = mine[0];
+  else if (state.isolation && mine.length) state.isolation = list.find(i => i.id === state.isolation.id);
+  document.getElementById('isoForm').style.display = mine.length ? 'none' : 'block';
+  if (!mine.length) { box.innerHTML = '<div class="empty">该变更尚未登记隔离单</div>'; return; }
+  box.innerHTML = mine.map(i => {
+    const active = state.isolation && i.id === state.isolation.id;
+    return `<div class="item" style="${active ? 'border-color:var(--blue)' : ''}">
+      <div class="head"><strong>隔离单</strong>
+        <span class="tag ${i.status}">${STATUS_NAME[i.status] || i.status}</span></div>
+      <div class="meta">${esc(i.id)} · v${i.version}</div>
+      <div class="btns"><button class="secondary" onclick="pickIsolation('${i.id}')">查看/操作</button></div>
+    </div>`;
+  }).join('');
+}
+async function pickIsolation(id) {
+  state.isolation = await api('/api/entities/' + id);
+  await renderDetail();
+}
+async function createIsolation() {
+  const changeId = document.getElementById('isoChange').value;
+  if (!changeId) return toast('需要先有已批准(approved)的变更', false);
+  const lines = document.getElementById('isoLines').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const valves = document.getElementById('isoValves').value.split('\n').map(s => s.trim()).filter(Boolean);
+  try {
+    const iso = await post('/api/isolations', { change_id: changeId, lines, valves });
+    state.isolation = iso;
+    toast('隔离单已登记：状态为「待隔离」，等待操作员与安全员分别确认', true);
+  } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+
+const STEPS = ['pending', 'isolated', 'work_in_progress', 'restored'];
+function renderSteps(status) {
+  return '<div class="steps">' + STEPS.map(s => {
+    const idx = STEPS.indexOf(status);
+    const me = STEPS.indexOf(s);
+    const cls = me < idx ? 'done' : me === idx ? 'on' : '';
+    return `<span class="${cls}">${STATUS_NAME[s]}</span>`;
+  }).join('') + '</div>';
+}
+function confirmBadge(label, rec) {
+  return `<span class="confirm"><span class="dot ${rec ? 'yes' : ''}"></span>${label}${
+    rec ? '：' + esc(rec.by) + ' @' + esc((rec.at || '').slice(11, 16)) : '：未确认'}</span>`;
+}
+
+async function renderDetail() {
+  const box = document.getElementById('detail');
+  let iso = state.isolation;
+  if (iso) iso = await api('/api/entities/' + iso.id);
+  state.isolation = iso;
+  if (!iso) { box.innerHTML = '<div class="empty">请选择或登记隔离单</div>'; return; }
+  const d = iso.data;
+  let blockers = [];
+  try { blockers = (await api(`/api/entities/${iso.id}/blockers`)).items || []; } catch (e) {}
+  let changeBlockers = [];
+  try { changeBlockers = (await api(`/api/entities/${d.change_id}/blockers`)).items || []; } catch (e) {}
+
+  const gasInfo = (t, label) => t
+    ? `<div class="meta">${label}：${esc(t.tested_by)}，有效期至 ${esc(t.valid_until)}</div>`
+    : `<div class="meta">${label}：<span class="empty">无</span></div>`;
+
+  let actions = '';
+  const v = iso.version;
+  if (iso.status === 'pending') {
+    actions = `<div class="btns">
+      <button onclick="doAct('confirm_operator',{})">操作员确认隔离</button>
+      <button class="secondary" onclick="doAct('confirm_safety',{})">安全员复核确认</button>
+      <button class="warn" onclick="withdraw()">撤回本人确认（回到待隔离）</button>
+    </div>
+    <div class="hint">规则：操作员与安全员必须分别确认；任一方撤回即回到「待隔离」，此前气体检测作废。</div>`;
+  } else if (iso.status === 'isolated') {
+    actions = `<label>气体检测（合格才允许开工；有效期过期则停工）</label>
+    <div class="row">
+      <input id="gasBy" placeholder="检测人工号" value="${esc(document.getElementById('userId').value)}">
+      <input id="gasUntil" value="${expiryInput(4)}" title="检测有效期至">
+    </div>
+    <div class="btns">
+      <button onclick="gasTest('gas_test')">提交合格气体检测</button>
+      <button onclick="doAct('start_work',{})">开工 start_work</button>
+      <button class="warn" onclick="withdraw()">撤回确认（回到待隔离）</button>
+    </div>
+    <div class="hint">开工门禁：双方确认 + 气体检测合格且未过期 + 关联行动项全部 verified。</div>`;
+  } else if (iso.status === 'work_in_progress') {
+    const checked = new Set((d.valve_checks || []).map(x => x.valve));
+    const checkRows = d.valves.map(valve => {
+      const rec = (d.valve_checks || []).find(x => x.valve === valve);
+      return `<tr>
+        <td>${esc(valve)}</td>
+        <td><input value="${rec ? esc(rec.checked_by) : esc(document.getElementById('userId').value)}"
+              id="vc-${encodeURIComponent(valve)}" ${rec ? 'disabled' : ''}></td>
+        <td>${rec ? '✓ 已由 ' + esc(rec.checked_by) + ' 核对' : '待核对'}</td>
+      </tr>`;
+    }).join('');
+    actions = `<div class="row">
+      <div>
+        <label>恢复供料前重新气体检测</label>
+        <div class="row">
+          <input id="gasBy2" placeholder="检测人" value="${esc(document.getElementById('userId').value)}">
+          <input id="gasUntil2" value="${expiryInput(2)}">
+        </div>
+        <div class="btns"><button onclick="gasTest('retest')">重新检测合格</button></div>
+      </div>
+      <div>
+        <label>逐阀核对（恢复供料）</label>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <tr><th style="text-align:left">阀门</th><th style="text-align:left">核对人</th><th style="text-align:left">状态</th></tr>
+          ${checkRows}
+        </table>
+      </div>
+    </div>
+    <div class="btns">
+      <button onclick="restoreFeed()">逐阀核对完成，恢复供料 restore_feed</button>
+      <button class="danger" onclick="stopWork()">停止施工 stop_work</button>
+    </div>
+    <div class="hint">检测过期或关联行动项未完成 → 必须停止施工；停工后须重新气体检测。恢复供料需重新检测且每个阀门逐阀核对。</div>`;
+  } else {
+    actions = `<div class="hint">隔离边界已恢复供料，变更可以继续实施。</div>`;
+  }
+
+  box.innerHTML = `
+    ${blockersHtml(blockers)}
+    ${changeBlockers.length ? blockersHtml(changeBlockers.map(b => ({ ...b, message: '变更门禁：' + b.message }))) : ''}
+    ${renderSteps(iso.status)}
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1">
+        <p><span class="tag ${iso.status}">${STATUS_NAME[iso.status] || iso.status}</span>
+           <span class="meta"> v${v} · ${esc(iso.id)}</span></p>
+        <div class="meta">变更：${esc(d.change_id)}</div>
+        <div class="meta">受影响管线：${d.lines.map(esc).join('、')}</div>
+        <div class="meta">登记阀门：${d.valves.map(esc).join('、')}</div>
+        <p style="margin-bottom:.2rem">${confirmBadge('操作员确认', d.operator_confirmed)}　${confirmBadge('安全员确认', d.safety_confirmed)}</p>
+        ${gasInfo(d.gas_test, '开工前气体检测')}
+        ${gasInfo(d.restoration_gas_test, '恢复前气体检测')}
+        ${d.last_withdraw ? `<div class="meta">最近撤回：${esc(d.last_withdraw.role)} ${esc(d.last_withdraw.by)} — ${esc(d.last_withdraw.reason)}</div>` : ''}
+        ${d.last_stop ? `<div class="meta">最近停工：${esc(d.last_stop.by)} — ${esc(d.last_stop.reason)}</div>` : ''}
+      </div>
+    </div>
+    ${actions}`;
+}
+
+async function doAct(action, data) {
+  if (!state.isolation) return;
+  try {
+    await act(state.isolation.id, action, data, state.isolation.version);
+    toast('动作完成：' + action, true);
+  } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+async function withdraw() {
+  const reason = prompt('撤回原因（必填，例如：发现邻线阀门漏关）');
+  if (reason === null) return;
+  if (!reason.trim()) return toast('撤回必须填写原因', false);
+  await doAct('withdraw', { reason });
+}
+async function gasTest(action) {
+  const suffix = action === 'retest' ? '2' : '';
+  const testedBy = document.getElementById('gasBy' + suffix).value.trim();
+  const validUntil = document.getElementById('gasUntil' + suffix).value;
+  if (!testedBy || !validUntil) return toast('检测人与有效期必填', false);
+  await doAct(action, { tested_by: testedBy, valid_until: validUntil, passed: true });
+}
+async function stopWork() {
+  const reason = prompt('停止施工原因（必填）');
+  if (reason === null) return;
+  if (!reason.trim()) return toast('停工必须填写原因', false);
+  await doAct('stop_work', { reason });
+}
+async function restoreFeed() {
+  const valveChecks = state.isolation.data.valves.map(valve => ({
+    valve,
+    checked_by: document.getElementById('vc-' + encodeURIComponent(valve)).value.trim(),
+  }));
+  if (valveChecks.some(x => !x.checked_by)) return toast('每个阀门都必须填写核对人', false);
+  await doAct('restore_feed', { valve_checks: valveChecks });
+}
+
+async function bootstrapDemo() {
+  try {
+    const unit = await post('/api/units', { name: '泵区 P-101', location: '一联合' });
+    const change = await post('/api/changes', { unit_id: unit.id, description: '更换 P-101 机封' });
+    await act(change.id, 'assess', { risk_level: 'medium', analyst: 'E-01' });
+    const approved = await act(change.id, 'approve', { approvals: ['S-01', 'S-02'], permit_id: 'MOC-2026-09' });
+    await post('/api/action_items', { change_id: change.id, description: '邻线 HV-102 加挂盲板', owner: 'O-02' });
+    state.change = approved;
+    toast('演示数据已生成：装置 / 变更（已批准）/ 行动项。下一步：登记隔离单。', true);
+  } catch (e) { toast(e.message, false); }
+  await refreshAll();
+}
+
+document.getElementById('role').addEventListener('change', refreshAll);
+document.getElementById('userId').addEventListener('change', refreshAll);
+refreshAll();
 </script>
 </body>
 </html>
